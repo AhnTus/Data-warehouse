@@ -1,0 +1,139 @@
+-- Database
+CREATE DATABASE sakila_dwh;
+
+-- Rental Dimension
+CREATE TABLE Dim_Rental (
+    rental_key INT,
+    rental_id INT,
+    rental_date DATE,
+    inventory_id INT,
+    customer_id INT,
+    return_date DATE,
+    staff_id INT,
+    amount FLOAT,
+    payment_date DATE
+)
+PARTITIONED BY (rental_month INT)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+-- Customer Dimension
+CREATE TABLE Dim_Customer (
+    customer_key INT,
+    customer_id INT,
+    store_id INT,
+    address_id INT,
+    active INT,
+    full_name string,
+    city string,
+    country string
+)
+CLUSTERED BY (customer_id) INTO 6 BUCKETS
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+-- Fact Segment
+CREATE TABLE Fact_Segment (
+    customer_id INT,
+    city string,
+    country string,
+    active TINYINT,
+    full_name string,
+    rental_id INT,
+    amount FLOAT,
+    rental_date DATE,
+    first_date DATE,
+    recency INT,
+    monetary FLOAT,
+    frequency INT
+)
+CLUSTERED BY (customer_id) INTO 8 BUCKETS
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+-- Load data into dimension and fact tables
+
+--## Load into rental and customer dimensions
+LOAD DATA LOCAL INPATH 'C:/Education/Uni/BigData/Final_Project/Data-Mining-with-ApacheHive/data/tables/dimCustomer.csv' OVERWRITE INTO TABLE Dim_Customer;
+LOAD DATA LOCAL INPATH 'C:/Education/Uni/BigData/Final_Project/Data-Mining-with-ApacheHive/data/tables/dimRental.txt' OVERWRITE INTO TABLE Dim_Rental;
+
+--## Load into Fact_Segment fact table
+INSERT INTO TABLE Fact_Segment
+SELECT
+    c.customer_id, c.city, c.country, c.active, c.full_name,
+    r.rental_id, r.amount, r.rental_date,
+    (SELECT MIN(rental_date) FROM Dim_Rental sub_r WHERE sub_r.customer_id = c.customer_id) AS first_date,
+    DATEDIFF(
+        (SELECT MAX(rental_date) FROM Dim_Rental sub_r WHERE sub_r.customer_id = c.customer_id),
+        (SELECT MIN(rental_date) FROM Dim_Rental sub_r WHERE sub_r.customer_id = c.customer_id)
+    ) AS recency,
+    (SELECT SUM(amount) FROM dim_rental sub_r WHERE sub_r.customer_id = c.customer_id) AS monetary,
+    (SELECT COUNT(rental_id) FROM dim_rental sub_r WHERE sub_r.customer_id = c.customer_id) AS frequency
+FROM dim_customer c
+JOIN dim_rental r ON r.customer_id = c.customer_id
+
+--Inventory Dimension
+CREATE TABLE DimInventory (
+            inventory_key INT,
+            inventory_id INT,
+            title STRING,
+            description STRING,
+            release_year INT,
+            language STRING,
+            rental_duration INT,
+            rental_rate DECIMAL(5,2),
+            length INT,
+            replacement_cost DECIMAL(5,2),
+            rating STRING,
+            special_features STRING,
+            catalogy_name STRING
+        )
+        ROW FORMAT DELIMITED
+        FIELDS TERMINATED BY ','
+        STORED AS TEXTFILE
+        TBLPROPERTIES ('skip.header.line.count'='1')
+--Date Dimension
+CREATE TABLE IF NOT EXISTS DimDate (
+                                    date_key int,
+                                    full_date STRING,
+                                    day_of_week INT,
+                                    day_num_in_month INT,
+                                    day_num_overall INT,
+                                    day_name STRING,
+                                    day_abbrev STRING,
+                                    weekday_flag STRING,
+                                    week_num_in_year INT,
+                                    week_num_overall INT,
+                                    week_begin_date STRING,
+                                    week_begin_date_key STRING,
+                                    month STRING,
+                                    month_num_overall INT,
+                                    month_name STRING,
+                                    month_abbrev STRING,
+                                    quarter INT,
+                                    year INT,
+                                    year_month STRING,
+                                    fiscal_month INT,
+                                    fiscal_quarter INT,
+                                    fiscal_year INT,
+                                    month_end_flag STRING
+                                )
+                                ROW FORMAT DELIMITED
+                                FIELDS TERMINATED BY ','
+                                STORED AS TEXTFILE
+                                TBLPROPERTIES ('skip.header.line.count'='1')
+--Fact Film-Inventory lưu dưới dạng  textfile
+CREATE TABLE Fact_Inventory_Analysis_TextFile (
+                                        inventory_key INT,
+                                        rental_key INT,
+                                        rental_date_key int,
+                                        remaining INT,
+                                        Total_Rental_Amount FLOAT 
+                                              )
+                                    ROW FORMAT DELIMITED
+                                    FIELDS TERMINATED BY ','
+                                    STORED AS TEXTFILE
+                                    TBLPROPERTIES ('skip.header.line.count'='1')
+--Fact Film-Inventory lưu dưới dạng  orc
+                            CREATE TABLE Fact_Inventory_Analysis_ORC STORED AS ORC
+                            AS SELECT * FROM Fact_Inventory_Analysis_TextFile
